@@ -32,12 +32,12 @@ DLL_Linkage rtspError rtspOpenSource(const char* srcURL, rtspSession* session)
 	return rtsperrOK;
 }
 
-DLL_Linkage rtspError rtspStartStream(rtspSession* session, getBufferFunc getBufferCB, readyBufferFunc readyBufferCB)
+DLL_Linkage rtspError rtspStartStream(rtspSession session, getBufferFunc getBufferCB, readyBufferFunc readyBufferCB, errorFunc errorCB)
 {
 	return rtsperrOK;
 }
 
-DLL_Linkage rtspError rtspCloseSource(rtspSession* session)
+DLL_Linkage rtspError rtspCloseSource(rtspSession session)
 {
 	return rtsperrOK;
 }

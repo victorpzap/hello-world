@@ -4,7 +4,12 @@
 ffmpegReader::ffmpegReader()
 	:pFmtContext_(0),
 	pCodecCtx_(0),
-	state_(ffstateNo)
+	state_(ffstateNo),
+	getBufferCB_(0),
+	readyBufferCB_(0),
+	errorCB_(0),
+	hThread_(0),
+	stopPlaying(false)
 {
 
 }
@@ -13,7 +18,7 @@ ffmpegReader::~ffmpegReader()
 {
 }
 
-int ffmpegReader::openStream(const char* srcURL)
+rtspError ffmpegReader::openStream(const char* srcURL)
 {
 	if(state_ != ffstateNo)
 		return rtsperrInvalidState;
@@ -52,12 +57,83 @@ int ffmpegReader::openStream(const char* srcURL)
 	return rtsperrOK;
 }
 
-int getParams(sourceParams* params)
+rtspError ffmpegReader::getParams(sourceParams* params)
 {
 	return rtsperrOK;
 }
 
 int ffmpegReader::InterruptCBFunc(void/** ptr*/)
 {
+	return 0;
+}
+
+rtspError ffmpegReader::rtspStartStream(getBufferFunc getBufferCB, readyBufferFunc readyBufferCB, errorFunc errorCB)
+{
+	if(state_ != ffstateOpen)
+		return rtsperrInvalidState;
+	if(!getBufferCB || !readyBufferCB || !errorCB)
+		return rtsperrPointer;
+
+	getBufferCB_ = getBufferCB;
+	readyBufferCB_ = readyBufferCB;
+	errorCB_ = errorCB;
+
+	hThread_ = ::CreateThread(0, 0, PlayLoopProc, this, 0, 0);
+
+	return rtsperrOK;
+}
+
+rtspError ffmpegReader::rtspCloseSource()
+{
+	return rtsperrOK;
+}
+
+DWORD ffmpegReader::PlayLoopProc(LPVOID aParam)
+{
+	ffmpegReader* This = static_cast<ffmpegReader*>(aParam);
+	return This->playLoop();
+}
+
+rtspError ffmpegReader::converToRGBA(AVFrame* source, unsigned char* target)
+{
+	return rtsperrOK;
+}
+
+DWORD ffmpegReader::playLoop()
+{
+	AVPacket pkt;
+	av_init_packet(&pkt);
+	AVFrame	Frame;
+	av_frame_unref(&Frame);
+
+		while(!stopPlaying)
+	{
+		int ret = av_read_frame(pFmtContext_, &pkt);
+		if(ret == AVERROR_EOF)
+		{
+			errorCB_(rtsperrEOF);
+			return rtsperrEOF;
+		}
+		else if(ret != 0)
+		{
+			errorCB_(rtsperrReadError);
+			return rtsperrReadError;
+		}
+		else
+		{
+			int gotAFrame;
+			ret = avcodec_decode_video2(pCodecCtx_, &Frame, &gotAFrame, &pkt);
+			if(ret < 0)
+			{
+				errorCB_(rtsperrDecodeError);
+				return rtsperrDecodeError;
+			}
+			if(gotAFrame)
+			{
+				converToRGBA(&Frame, 0);
+			}
+		}
+
+	}
 	return 0;
 }

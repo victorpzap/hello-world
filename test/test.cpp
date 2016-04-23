@@ -24,14 +24,30 @@ void freeBuffer()
 		_aligned_free(pBuffer);
 }
 
+void readyBuffer(int width, int height, int stride, unsigned char* buffer)
+{
+	printf("buffer\n");
+}
+
+void processError(rtspError err)
+{
+	printf("Rised error %d\n", err);
+};
+
 int _tmain(int argc, _TCHAR* argv[])
 {
 	const char* src = "C:/333/5555/axis&_15_06_24_21_15_36_459.avi";
 	rtspSession session = 0;
 	rtspInitSource();
 
-	int err = rtspOpenSource(src, getBuffer, &session);
+	int err = rtspOpenSource(src, &session);
+	if(err != rtsperrOK)
+	{
+		printf("rtspOpenSource rised error %d\n", err);
+		return 1;
+	}
 
+	err = rtspStartStream(session, getBuffer, readyBuffer, processError);
 	freeBuffer();
 	return 0;
 }
