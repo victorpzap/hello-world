@@ -9,7 +9,8 @@ ffmpegReader::ffmpegReader()
 	readyBufferCB_(0),
 	errorCB_(0),
 	hThread_(0),
-	stopPlaying(false)
+	stopPlaying_(false),
+	video_stream_no_(-1)
 {
 
 }
@@ -29,23 +30,31 @@ rtspError ffmpegReader::openStream(const char* srcURL)
 		return rtsperrFaileStreamOpen;
 
 	AVStream *	pStream;
-	size_t	streamNo = -1;
 	for(unsigned int i = 0; i < pFmtContext_->nb_streams; ++i) 
 	{
 		pStream = pFmtContext_->streams[i];
 		if(pStream->codec->codec_type == AVMEDIA_TYPE_VIDEO) 
 		{
-			streamNo = i;
 			pCodecCtx_ = pStream->codec;
+			video_stream_no_ = i;
 			break;
 		}
 	}
 
-	if(streamNo == -1)
+	if(video_stream_no_ == -1)
 		return rtsperrStreamNotFound;
 
 	AVCodec *pCodec = avcodec_find_decoder(pCodecCtx_->codec_id);
-	if(pCodec == 0)
+	if(!pCodec)
+	{
+		avcodec_close(pCodecCtx_);
+		avformat_free_context(pFmtContext_);
+		pCodecCtx_ = 0;
+		pFmtContext_ = 0;
+		return rtsperrCodecNotFound;
+	}
+	err = avcodec_open2(pCodecCtx_, pCodec, NULL);
+	if(err)
 	{
 		avcodec_close(pCodecCtx_);
 		avformat_free_context(pFmtContext_);
@@ -67,7 +76,7 @@ int ffmpegReader::InterruptCBFunc(void/** ptr*/)
 	return 0;
 }
 
-rtspError ffmpegReader::rtspStartStream(getBufferFunc getBufferCB, readyBufferFunc readyBufferCB, errorFunc errorCB)
+rtspError ffmpegReader::StartStream(getBufferFunc getBufferCB, readyBufferFunc readyBufferCB, errorFunc errorCB)
 {
 	if(state_ != ffstateOpen)
 		return rtsperrInvalidState;
@@ -78,13 +87,15 @@ rtspError ffmpegReader::rtspStartStream(getBufferFunc getBufferCB, readyBufferFu
 	readyBufferCB_ = readyBufferCB;
 	errorCB_ = errorCB;
 
+	stopPlaying_ = false;
 	hThread_ = ::CreateThread(0, 0, PlayLoopProc, this, 0, 0);
 
 	return rtsperrOK;
 }
 
-rtspError ffmpegReader::rtspCloseSource()
+rtspError ffmpegReader::ReqCloseSource()
 {
+	stopPlaying_ = true;
 	return rtsperrOK;
 }
 
@@ -94,8 +105,54 @@ DWORD ffmpegReader::PlayLoopProc(LPVOID aParam)
 	return This->playLoop();
 }
 
-rtspError ffmpegReader::converToRGBA(AVFrame* source, unsigned char* target)
+rtspError ffmpegReader::converToRGBA(AVFrame* source, TargetPicture* target)
 {
+	TargetBuffers buffers;
+	int ret = 0;
+	AVFrame*	targetFrame = av_frame_alloc();
+	int numBytesY = av_image_get_buffer_size(AV_PIX_FMT_GRAY8, pCodecCtx_->width,pCodecCtx_->height, 16);
+	int numBytes = av_image_get_buffer_size(AV_PIX_FMT_BGRA, pCodecCtx_->width,pCodecCtx_->height, 16);
+	buffers.aligment = 16;
+	buffers.bgra_buffer = 0;
+	buffers.y_buffer = 0;
+	buffers.y_size = numBytesY;
+	buffers.bgra_size = numBytes;
+	rtspError err = getBufferCB_(&buffers);
+	if(err != rtsperrOK)
+		return rtsperrOutOfMemory;
+
+	if(buffers.bgra_buffer)
+	{
+		avpicture_fill((AVPicture *) targetFrame, buffers.bgra_buffer, AV_PIX_FMT_BGRA, pCodecCtx_->width, pCodecCtx_->height);
+		struct SwsContext * img_convert_ctx;
+		img_convert_ctx = sws_getCachedContext(NULL,pCodecCtx_->width, pCodecCtx_->height, pCodecCtx_->pix_fmt, 
+			pCodecCtx_->width, pCodecCtx_->height, AV_PIX_FMT_BGRA, SWS_FAST_BILINEAR, NULL, NULL,NULL);
+		if(!img_convert_ctx)
+			return rtsperrUnsupportedFormat;
+		sws_scale(img_convert_ctx, ((AVPicture*)source)->data, ((AVPicture*)source)->linesize, 0, 
+			pCodecCtx_->height, ((AVPicture *)targetFrame)->data, ((AVPicture *)targetFrame)->linesize);
+		target->bgra_buffer = targetFrame->data[0];
+		target->bgra_stride = targetFrame->linesize[0];
+		target->width = source->width;
+		target->height = source->height;
+	}
+	if(buffers.y_buffer)
+	{
+		avpicture_fill((AVPicture *) targetFrame, buffers.y_buffer, AV_PIX_FMT_GRAY8, pCodecCtx_->width, pCodecCtx_->height);
+		struct SwsContext * img_convert_ctx;
+		img_convert_ctx = sws_getCachedContext(NULL,pCodecCtx_->width, pCodecCtx_->height, pCodecCtx_->pix_fmt, 
+			pCodecCtx_->width, pCodecCtx_->height, AV_PIX_FMT_GRAY8, SWS_FAST_BILINEAR, NULL, NULL,NULL);
+		if(!img_convert_ctx)
+			return rtsperrUnsupportedFormat;
+		sws_scale(img_convert_ctx, ((AVPicture*)source)->data, ((AVPicture*)source)->linesize, 0, 
+			pCodecCtx_->height, ((AVPicture *)targetFrame)->data, ((AVPicture *)targetFrame)->linesize);
+		target->y_buffer = targetFrame->data[0];
+		target->y_stride = targetFrame->linesize[0];
+		target->width = source->width;
+		target->height = source->height;
+	}
+	target->user_data = buffers.user_data;
+	av_frame_free(&targetFrame);
 	return rtsperrOK;
 }
 
@@ -103,10 +160,13 @@ DWORD ffmpegReader::playLoop()
 {
 	AVPacket pkt;
 	av_init_packet(&pkt);
-	AVFrame	Frame;
-	av_frame_unref(&Frame);
+	AVFrame*	Frame = av_frame_alloc();
+	TargetPicture target_buffers;
+	rtspError err;
+	
+	//av_frame_unref(&Frame);
 
-		while(!stopPlaying)
+	while(!stopPlaying_)
 	{
 		int ret = av_read_frame(pFmtContext_, &pkt);
 		if(ret == AVERROR_EOF)
@@ -121,8 +181,10 @@ DWORD ffmpegReader::playLoop()
 		}
 		else
 		{
+			if(pkt.stream_index != video_stream_no_)
+				continue;
 			int gotAFrame;
-			ret = avcodec_decode_video2(pCodecCtx_, &Frame, &gotAFrame, &pkt);
+			ret = avcodec_decode_video2(pCodecCtx_, Frame, &gotAFrame, &pkt);
 			if(ret < 0)
 			{
 				errorCB_(rtsperrDecodeError);
@@ -130,10 +192,33 @@ DWORD ffmpegReader::playLoop()
 			}
 			if(gotAFrame)
 			{
-				converToRGBA(&Frame, 0);
+				err = converToRGBA(Frame, &target_buffers);
+				if(err != rtsperrOK)
+				{
+					errorCB_(err);
+					return err;
+				}
+				target_buffers.ms_pts = pkt.pts;
+				readyBufferCB_(&target_buffers);
 			}
 		}
-
 	}
 	return 0;
+}
+
+rtspError ffmpegReader::WaitForStop(DWORD timeout)
+{
+	if(!hThread_)
+		return rtsperrOK;
+	DWORD ret = WaitForSingleObject(hThread_, timeout);
+	if(WAIT_OBJECT_0 == ret)
+	{
+		CloseHandle(hThread_);
+		hThread_ = 0;
+		return rtsperrOK;
+	}
+	else if(WAIT_TIMEOUT == ret)
+		return rtsperrTimeOut;
+	else
+		return rtsperrFailed;
 }

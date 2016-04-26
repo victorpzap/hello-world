@@ -5,6 +5,7 @@
 
 #include <iostream>
 #include <memory>
+#include <assert.h>
 
 #include "../inc/rtspsrc.h"
 #include "ffmpegstream.h"
@@ -34,10 +35,25 @@ DLL_Linkage rtspError rtspOpenSource(const char* srcURL, rtspSession* session)
 
 DLL_Linkage rtspError rtspStartStream(rtspSession session, getBufferFunc getBufferCB, readyBufferFunc readyBufferCB, errorFunc errorCB)
 {
-	return rtsperrOK;
+	if(!session)
+		return rtsperrPointer;
+	ffmpegReader* reader = static_cast<ffmpegReader*>(session);
+	return reader->StartStream(getBufferCB, readyBufferCB, errorCB);
 }
 
 DLL_Linkage rtspError rtspCloseSource(rtspSession session)
 {
+	if(!session)
+		return rtsperrPointer;
+	ffmpegReader* reader = static_cast<ffmpegReader*>(session);
+	reader->ReqCloseSource();
 	return rtsperrOK;
+}
+
+DLL_Linkage rtspError rtspWaitForStop(rtspSession session, unsigned int timeout)
+{
+	if(!session)
+		return rtsperrPointer;
+	ffmpegReader* reader = static_cast<ffmpegReader*>(session);
+	return reader->WaitForStop(timeout);
 }
