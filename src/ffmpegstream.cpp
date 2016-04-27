@@ -17,6 +17,15 @@ ffmpegReader::ffmpegReader()
 
 ffmpegReader::~ffmpegReader()
 {
+	if(state_ != ffstateNo)
+	{
+		ReqCloseSource();
+		WaitForStop(INFINITE);
+		if(pCodecCtx_)
+			avcodec_close(pCodecCtx_);
+		if(pFmtContext_)
+			avformat_free_context(pFmtContext_);
+	}
 }
 
 rtspError ffmpegReader::openStream(const char* srcURL)
@@ -166,17 +175,20 @@ DWORD ffmpegReader::playLoop()
 	
 	//av_frame_unref(&Frame);
 
+	state_ = ffstateStreamming;
 	while(!stopPlaying_)
 	{
 		int ret = av_read_frame(pFmtContext_, &pkt);
 		if(ret == AVERROR_EOF)
 		{
 			errorCB_(rtsperrEOF);
+			state_= ffstateError;
 			return rtsperrEOF;
 		}
 		else if(ret != 0)
 		{
 			errorCB_(rtsperrReadError);
+			state_= ffstateError;
 			return rtsperrReadError;
 		}
 		else
@@ -188,6 +200,7 @@ DWORD ffmpegReader::playLoop()
 			if(ret < 0)
 			{
 				errorCB_(rtsperrDecodeError);
+				state_= ffstateError;
 				return rtsperrDecodeError;
 			}
 			if(gotAFrame)
@@ -196,6 +209,7 @@ DWORD ffmpegReader::playLoop()
 				if(err != rtsperrOK)
 				{
 					errorCB_(err);
+					state_= ffstateError;
 					return err;
 				}
 				target_buffers.ms_pts = pkt.pts;
@@ -203,6 +217,7 @@ DWORD ffmpegReader::playLoop()
 			}
 		}
 	}
+	state_ = ffstateStoped;
 	return 0;
 }
 

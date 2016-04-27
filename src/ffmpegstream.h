@@ -24,7 +24,14 @@ struct sourceParams
 class ffmpegReader
 {
 public:
-	enum ffstate {ffstateNo, ffstateOpen,};  
+	enum ffstate 
+	{
+		ffstateNo, 
+		ffstateOpen, 
+		ffstateStreamming, 
+		ffstateStoped, 
+		ffstateError, 
+	};  
 	ffmpegReader();
 	~ffmpegReader();
 	rtspError openStream(const char* srcURL);

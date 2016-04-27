@@ -24,7 +24,7 @@ DLL_Linkage rtspError rtspOpenSource(const char* srcURL, rtspSession* session)
 	if(*session)
 		return rtsperrNonZeroSession;
 
-	std::auto_ptr<ffmpegReader> reader(new(ffmpegReader));
+	std::auto_ptr<ffmpegReader> reader(new ffmpegReader);
 	int err = reader->openStream(srcURL);
 	if(err)
 		return rtsperrFailed;
@@ -41,7 +41,7 @@ DLL_Linkage rtspError rtspStartStream(rtspSession session, getBufferFunc getBuff
 	return reader->StartStream(getBufferCB, readyBufferCB, errorCB);
 }
 
-DLL_Linkage rtspError rtspCloseSource(rtspSession session)
+DLL_Linkage rtspError rtspCloseStream(rtspSession session)
 {
 	if(!session)
 		return rtsperrPointer;
@@ -56,4 +56,13 @@ DLL_Linkage rtspError rtspWaitForStop(rtspSession session, unsigned int timeout)
 		return rtsperrPointer;
 	ffmpegReader* reader = static_cast<ffmpegReader*>(session);
 	return reader->WaitForStop(timeout);
+}
+
+DLL_Linkage rtspError rtspCloseSource(rtspSession session)
+{
+	if(!session)
+		return rtsperrPointer;
+	ffmpegReader* reader = static_cast<ffmpegReader*>(session);
+	delete reader;
+	return rtsperrOK;
 }

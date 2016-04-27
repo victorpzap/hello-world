@@ -58,5 +58,6 @@ typedef void (*errorFunc)(rtspError error);
 DLL_Linkage void rtspInitSource();
 DLL_Linkage rtspError rtspOpenSource(const char* srcURL, rtspSession* session);
 DLL_Linkage rtspError rtspStartStream(rtspSession session, getBufferFunc getBufferCB, readyBufferFunc readyBufferCB, errorFunc errorCB);
-DLL_Linkage rtspError rtspCloseSource(rtspSession session);
+DLL_Linkage rtspError rtspCloseStream(rtspSession session);
 DLL_Linkage rtspError rtspWaitForStop(rtspSession session, unsigned int timeout);
+DLL_Linkage rtspError rtspCloseSource(rtspSession session);

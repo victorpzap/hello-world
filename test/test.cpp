@@ -93,8 +93,9 @@ int _tmain(int argc, _TCHAR* argv[])
 	err = rtspStartStream(session, getBuffer, readyBuffer, processError);
 	int a;
 	while((a = getchar()) != 's');
-	rtspCloseSource(session);
+	rtspCloseStream(session);
 	rtspWaitForStop(session, INFINITE);
+	rtspCloseSource(session);
 	freeBuffers();
 	if(f)
 		fclose(f);
