@@ -37,7 +37,7 @@ typedef struct
 	int y_stride;
 	unsigned char* bgra_buffer;
 	int bgra_stride;
-	__int64	ms_pts;
+	__int64	us_pts;
 	void* user_data;
 } TargetPicture;
 

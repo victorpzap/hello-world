@@ -1,6 +1,8 @@
 #include "stdafx.h"
 #include "ffmpegstream.h"
 
+static AVRational TIME_BASE = {1, 1000000};
+
 ffmpegReader::ffmpegReader()
 	:pFmtContext_(0),
 	pCodecCtx_(0),
@@ -212,7 +214,7 @@ DWORD ffmpegReader::playLoop()
 					state_= ffstateError;
 					return err;
 				}
-				target_buffers.ms_pts = pkt.pts;
+				target_buffers.us_pts = av_rescale_q(pkt.pts, pFmtContext_->streams[pkt.stream_index]->time_base, TIME_BASE);
 				readyBufferCB_(&target_buffers);
 			}
 		}

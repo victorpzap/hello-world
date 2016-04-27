@@ -53,7 +53,7 @@ void readyBuffer(TargetPicture* picture)
 		fwrite(picture->bgra_buffer, sizeof(char), picture->bgra_stride * picture->height, f);
 	}
 	Sleep(10);
-	printf("*\n");
+	printf("* %I64d\n", picture->us_pts);
 }
 
 void processError(rtspError err)
